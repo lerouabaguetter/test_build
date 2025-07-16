@@ -1,0 +1,227 @@
+name: Build
+on:
+  workflow_dispatch:
+    inputs:
+      product-id:
+        description: "What Hammer Build workflow to use"
+        default: "individual-meta_human_dna-blender-python_3_11"
+        type: choice
+        required: true
+        options: 
+          - "individual-meta_human_dna-blender-python_3_11"
+          - "indie_team-meta_human_dna-blender-python_3_11"
+          - "enterprise-meta_human_dna-blender-python_3_11"
+      version-tag:
+        description: "What versioned release tag of the source code to use."
+        default: "latest"
+        type: string
+        required: true
+      python-version:
+        description: "What version of Python to build against."
+        default: "3.11"
+        type: choice
+        required: true
+        options: 
+          - "3.11"
+      blender-version:
+        description: "What version of Blender is being used."
+        default: "4.2"
+        type: choice
+        required: true
+        options:
+            - "4.2"
+            - "4.3"
+
+jobs:
+  build-windows-amd64:
+    name: Windows amd64 Build
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:      
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Validate Input
+        shell: powershell
+        run: |
+          .\bin\windows\amd64\hammer.exe validate --github-token ${{ secrets.GH_PAT }} --product-id ${{ inputs.product-id }} --python-version ${{ inputs.python-version }} --blender-version ${{ inputs.blender-version }}
+
+      - name: Install Build Dependencies
+        shell: powershell
+        run: |
+          choco install cmake -version=3.31.0 -y --ignore-package-exit-codes
+          choco install visualstudio2022buildtools -y --ignore-package-exit-codes
+          choco install visualstudio2022-workload-vctools -y --ignore-package-exit-codes
+
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Run Hammer Build Tool
+        shell: powershell
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\activate
+          .\bin\windows\amd64\hammer.exe build --github-token ${{ secrets.GH_PAT }} --product-id ${{ inputs.product-id }} --python-version ${{ inputs.python-version }} --blender-version ${{ inputs.blender-version }}
+      
+      - name: Upload Windows amd64 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-windows-amd64
+          path: dist/windows/amd64/
+          if-no-files-found: error
+          overwrite: true
+
+  build-linux-x86_64:
+    name: Linux x86_64 Build
+    runs-on: ubuntu-latest
+
+    permissions:
+      checks: write
+
+    container:
+      image: ghcr.io/poly-hammer/hammer-build-tool-linux:latest
+      options: --user root
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GH_PAT }}
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Validate Input
+        run: |
+          ./bin/linux/x86_64/hammer validate --github-token ${{ secrets.GH_PAT }} --product-id ${{ inputs.product-id }} --python-version ${{ inputs.python-version }} --blender-version ${{ inputs.blender-version }}
+
+      - name: Run Hammer Build Tool
+        run: |
+          /usr/local/bin/python${{ inputs.python-version }} -m venv .venv
+          source ./.venv/bin/activate
+          ./bin/linux/x86_64/hammer build --github-token ${{ secrets.GH_PAT }} --product-id ${{ inputs.product-id }} --python-version ${{ inputs.python-version }} --blender-version ${{ inputs.blender-version }}
+
+      - name: Upload Linux x86_64 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux-x86_64
+          path: dist/linux/x86_64/
+          if-no-files-found: error
+          overwrite: true
+
+  build-mac-arm64:
+    name: Mac arm64 Build
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      PCRE_MAJOR_VERSION: "10"
+      PCRE_MINOR_VERSION: "44"
+    steps:      
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Validate Input
+        run: |
+          ./bin/mac/arm64/hammer validate --github-token ${{ secrets.GH_PAT }} --product-id ${{ inputs.product-id }} --python-version ${{ inputs.python-version }} --blender-version ${{ inputs.blender-version }}
+
+      - name: Install Homebrew and Dependencies
+        run: |
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          brew install make bzip2 libffi zlib libxml2 rsync llvm autoconf automake tcl-tk
+
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Run Hammer Build Tool
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          ./bin/mac/arm64/hammer build --github-token ${{ secrets.GH_PAT }} --product-id ${{ inputs.product-id }} --python-version ${{ inputs.python-version }} --blender-version ${{ inputs.blender-version }}
+
+      - name: Upload Mac arm64 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-mac-arm64
+          path: dist/mac/arm64/
+          if-no-files-found: error
+          overwrite: true
+
+  # build-mac-x86_64:
+  #   name: Mac x86_64 Build
+  #   runs-on: macos-13
+  #   timeout-minutes: 60
+  #   env:
+  #     PCRE_MAJOR_VERSION: "10"
+  #     PCRE_MINOR_VERSION: "44"
+  #   steps:      
+  #     - name: Checkout Repo
+  #       uses: actions/checkout@v4
+
+  #     - name: Validate Input
+  #       run: |
+  #         ./bin/mac/x86_64/hammer validate --github-token ${{ secrets.GH_PAT }} --product-id ${{ inputs.product-id }} --python-version ${{ inputs.python-version }} --blender-version ${{ inputs.blender-version }}
+
+  #     - name: Install Homebrew and Dependencies
+  #       run: |
+  #         /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  #         brew install make bzip2 libffi zlib libxml2 rsync llvm autoconf automake tcl-tk
+
+  #     - name: Set up Python ${{ inputs.python-version }}
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: ${{ inputs.python-version }}
+
+  #     - name: Run Hammer Build Tool
+  #       run: |
+  #         python -m venv .venv
+  #         . .venv/bin/activate
+  #         ./bin/mac/x86_64/hammer build --github-token ${{ secrets.GH_PAT }} --product-id ${{ inputs.product-id }} --python-version ${{ inputs.python-version }} --blender-version ${{ inputs.blender-version }}
+
+  #     - name: Upload Mac x86_64 Artifacts
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: dist-mac-x86_64
+  #         path: dist/mac/x86_64/
+  #         if-no-files-found: error
+  #         overwrite: true
+
+  release:
+    # needs: [build-linux-x86_64, build-windows-amd64, build-mac-arm64, build-mac-x86_64]
+    needs: [build-linux-x86_64, build-windows-amd64, build-mac-arm64]
+    name: Release
+    runs-on: ubuntu-latest
+    steps:      
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Download Mac arm64 Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-mac-arm64
+          path: dist/mac/arm64
+      
+      # - name: Download Mac x86_64 Artifacts
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: dist-mac-x86_64
+      #     path: dist/mac/x86_64
+
+      - name: Download Linux x86_64 Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-linux-x86_64
+          path: dist/linux/x86_64
+
+      - name: Download Windows amd64 Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-windows-amd64
+          path: dist/windows/amd64
+
+      - name: Deploy Addon
+        run: |
+          ./bin/linux/x86_64/hammer deploy --github-token ${{ secrets.GH_PAT }} --repo ${{ github.repository }} --product-id ${{ inputs.product-id }} --version-tag ${{ inputs.version-tag }} --python-version ${{ inputs.python-version }} --blender-version ${{ inputs.blender-version }}
