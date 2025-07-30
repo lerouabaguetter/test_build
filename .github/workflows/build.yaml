@@ -44,7 +44,7 @@ jobs:
       - name: Install Build Dependencies
         shell: powershell
         run: |
-          choco install cmake -version=3.31.0 -y --ignore-package-exit-codes
+          choco install cmake -version= 3.31.0 -y --ignore-package-exit-codes
 
       - name: Set up Python ${{ inputs.python-version }}
         uses: actions/setup-python@v5
