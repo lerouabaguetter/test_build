@@ -41,11 +41,6 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Validate Input
-        shell: powershell
-        run: |
-          .\bin\windows\amd64\hammer.exe validate --github-token ${{ secrets.GH_PAT }} --product-id ${{ inputs.product-id }} --python-version ${{ inputs.python-version }} --blender-version ${{ inputs.blender-version }}
-
       - name: Install Build Dependencies
         shell: powershell
         run: |
